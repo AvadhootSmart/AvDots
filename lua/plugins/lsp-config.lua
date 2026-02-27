@@ -1,4 +1,3 @@
-local augroup = vim.api.nvim_create_augroup("LspFormatting", {})
 return {
     "neovim/nvim-lspconfig",
     dependencies = {
@@ -7,37 +6,40 @@ return {
         "hrsh7th/cmp-nvim-lsp",
         "hrsh7th/cmp-buffer",
         "hrsh7th/cmp-path",
-        "hrsh7th/cmp-cmdline",
         "hrsh7th/nvim-cmp",
         "L3MON4D3/LuaSnip",
         "saadparwaiz1/cmp_luasnip",
         "j-hui/fidget.nvim",
+        "folke/lazydev.nvim",
     },
-
     config = function()
-        local cmp = require("cmp")
         local cmp_lsp = require("cmp_nvim_lsp")
-        local capabilities = vim.tbl_deep_extend(
-            "force",
-            {},
-            vim.lsp.protocol.make_client_capabilities(),
-            cmp_lsp.default_capabilities()
-        )
 
-        local on_attach = function(_, bufnr)
-            local function buf_set_keymap(...)
-                vim.api.nvim_buf_set_keymap(bufnr, ...)
-            end
-
-            local opts = { noremap = true, silent = true }
-
-            buf_set_keymap("n", "K", "<cmd>lua vim.lsp.buf.hover()<CR>", opts)
-            buf_set_keymap("n", "gd", "<cmd>lua vim.lsp.buf.definition()<CR>", opts)
-            buf_set_keymap("n", "<leader>ca", "<cmd>lua vim.lsp.buf.code_action()<CR>", opts)
-            buf_set_keymap("n", "<leader>d", "<cmd>lua vim.diagnostic.open_float()<CR>", opts)
-        end
-
+        -- 1. Setup Fidget (UI for LSP progress)
         require("fidget").setup({})
+
+        -- 2. Setup LazyDev (Modern replacement for manual Lua library paths)
+        require("lazydev").setup({})
+
+        -- 3. Capabilities for Autocompletion
+        local capabilities = vim.lsp.protocol.make_client_capabilities()
+        capabilities = vim.tbl_deep_extend("force", capabilities, cmp_lsp.default_capabilities())
+
+        -- 4. Keymaps (Modern LspAttach Autocmd)
+        -- This replaces the need to pass 'on_attach' to every single server.
+        vim.api.nvim_create_autocmd("LspAttach", {
+            group = vim.api.nvim_create_augroup("UserLspConfig", {}),
+            callback = function(ev)
+                local opts = { noremap = true, silent = true, buffer = ev.buf }
+                vim.keymap.set("n", "K", vim.lsp.buf.hover, opts)
+                vim.keymap.set("n", "gd", vim.lsp.buf.definition, opts)
+                vim.keymap.set("n", "<leader>ca", vim.lsp.buf.code_action, opts)
+                vim.keymap.set("n", "<leader>d", vim.diagnostic.open_float, opts)
+                vim.keymap.set("n", "gr", vim.lsp.buf.references, opts)
+            end,
+        })
+
+        -- 5. Mason Setup
         require("mason").setup()
         require("mason-lspconfig").setup({
             ensure_installed = {
@@ -46,82 +48,70 @@ return {
                 "clangd",
                 "vtsls",
                 "tailwindcss",
+                "solidity_ls",
             },
             handlers = {
-                function(server_name) -- default handler (optional)
-                    require("lspconfig")[server_name].setup({
+                -- Default handler using the NEW Neovim 0.11 API
+                function(server_name)
+                    vim.lsp.config(server_name, {
                         capabilities = capabilities,
-                        on_attach = on_attach,
                     })
+                    vim.lsp.enable(server_name)
                 end,
 
-                zls = function()
-                    local lspconfig = require("lspconfig")
-                    lspconfig.zls.setup({
-                        root_dir = lspconfig.util.root_pattern(".git", "build.zig", "zls.json"),
-                        settings = {
-                            zls = {
-                                enable_inlay_hints = true,
-                                enable_snippets = true,
-                                warn_style = true,
-                            },
-                        },
-                    })
-                    vim.g.zig_fmt_parse_errors = 0
-                    vim.g.zig_fmt_autosave = 0
-                end,
+                -- Specific override for Lua
                 ["lua_ls"] = function()
-                    local lspconfig = require("lspconfig")
-                    lspconfig.lua_ls.setup({
+                    vim.lsp.config("lua_ls", {
                         capabilities = capabilities,
-                        on_attach = on_attach,
                         settings = {
                             Lua = {
-                                runtime = { version = "Lua 5.1" },
                                 diagnostics = {
-                                    globals = { "bit", "vim", "it", "describe", "before_each", "after_each" },
+                                    globals = { "vim" },
                                 },
                             },
                         },
                     })
+                    vim.lsp.enable("lua_ls")
                 end,
             },
         })
 
-        local cmp_select = { behavior = cmp.SelectBehavior.Select }
-
+        -- 6. nvim-cmp Setup (Completion Engine)
+        local cmp = require("cmp")
         cmp.setup({
             snippet = {
                 expand = function(args)
-                    require("luasnip").lsp_expand(args.body) -- For `luasnip` users.
+                    require("luasnip").lsp_expand(args.body)
                 end,
             },
+            window = {
+                completion = cmp.config.window.bordered(),
+                documentation = cmp.config.window.bordered(),
+            },
             mapping = cmp.mapping.preset.insert({
-                ["<C-p>"] = cmp.mapping.select_prev_item(cmp_select),
-                ["<C-n>"] = cmp.mapping.select_next_item(cmp_select),
+                ["<C-p>"] = cmp.mapping.select_prev_item(),
+                ["<C-n>"] = cmp.mapping.select_next_item(),
                 ["<C-y>"] = cmp.mapping.confirm({ select = true }),
                 ["<C-Space>"] = cmp.mapping.complete(),
             }),
             sources = cmp.config.sources({
+                { name = "lazydev", group_index = 0 },
                 { name = "nvim_lsp" },
-                { name = "luasnip" }, -- For luasnip users.
-            }, {
+                { name = "luasnip" },
+                { name = "path" },
                 { name = "buffer" },
             }),
         })
 
+        -- 7. Diagnostics UI
         vim.diagnostic.config({
-            -- virtual_text = false,
-            -- signs = true,
-            -- underline = false,
-            update_in_insert = true,
+            signs = true,
+            underline = true,
+            update_in_insert = false,
+            severity_sort = true,
             float = {
-                focusable = false,
-                style = "minimal",
                 border = "rounded",
                 source = "always",
-                header = "",
-                prefix = "",
             },
         })
     end,

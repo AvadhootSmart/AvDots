@@ -15,8 +15,12 @@ return {
                     "rose-pine",
                     "kanagawa-dragon",
                     "oh-lucy",
+                    "tokyonight-night",
+                    "tokyonight-storm",
+                    "tokyonight-moon",
+                    "tokyonight-day",
+                    "tokyonight-storm",
                 },
-                -- themeConfigFile = "~/.config/nvim/lua/colorschemes.lua",
             })
         end,
     },

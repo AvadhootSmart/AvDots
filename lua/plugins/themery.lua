@@ -20,6 +20,7 @@ return {
                     "tokyonight-moon",
                     "tokyonight-day",
                     "tokyonight-storm",
+                    "ayu"
                 },
             })
         end,
